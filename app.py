@@ -251,7 +251,7 @@ elif nav == "📓 Stage Journal":
             l_tags = st.text_input("🏷 Tags", placeholder="kafka, python, airflow",          key=f"l_tg{lv}")
         with lc2:
             l_lang = st.selectbox("💻 Language",
-                ["python","sql","bash","java","scala","javascript","yaml","json","other"],    key=f"l_lg{lv}")
+                ["python","sql","bash","java","scala","javascript","yaml" ,"HTML","CSS","React","C","C++","C#","json","other"],    key=f"l_lg{lv}")
 
         l_learn   = st.text_area("📖 Daily Learning *",
             placeholder="What did you learn? Problems solved? Insights?",

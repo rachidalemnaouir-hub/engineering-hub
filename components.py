@@ -371,45 +371,97 @@ def _breadcrumb(stack):
 
 def _upload_file_widget(db, target_folder_id, widget_key_suffix):
     """
-    Reusable upload widget. Saves file into target_folder_id.
-    Returns True if a file was successfully saved, else False.
+    Reusable upload widget. Supports selecting MULTIPLE files at once
+    (Ctrl+A or Ctrl+Click). Saves all files into target_folder_id.
+    Returns True if at least one file was saved, "cancel" on cancel, False otherwise.
     """
-    up = st.file_uploader(
-        "Choose a file to upload",
+    uploads = st.file_uploader(
+        "Choose one or more files  (Ctrl+A to select all)",
         type=ALLOWED,
+        accept_multiple_files=True,
         key=f"fm_up_{widget_key_suffix}",
         label_visibility="collapsed",
     )
-    if up:
-        ext = ("." + up.name.rsplit(".", 1)[-1].lower()) if "." in up.name else ".txt"
-        raw = up.read()
-        try:    content = raw.decode("utf-8")
-        except: content = raw.decode("latin-1", errors="replace")
-        size_kb = len(content.encode()) / 1024
-        lang    = EXT_LANG.get(ext, "text")
-        n_lines = len(content.splitlines())
 
+    if uploads:
+        total_kb = 0
+        parsed   = []
+
+        for up in uploads:
+            ext = ("." + up.name.rsplit(".", 1)[-1].lower()) if "." in up.name else ".txt"
+            raw = up.read()
+            try:    file_content = raw.decode("utf-8")
+            except: file_content = raw.decode("latin-1", errors="replace")
+            size_kb = len(file_content.encode()) / 1024
+            lang    = EXT_LANG.get(ext, "text")
+            n_lines = len(file_content.splitlines())
+            total_kb += size_kb
+            parsed.append((up.name, ext, file_content, size_kb, lang, n_lines))
+
+        # Summary bar
         st.markdown(
-            f'<div class="fm-row">'
-            f'<span class="fm-icon">{_ext_icon(ext)}</span>'
-            f'<span class="fm-name">{up.name}</span>'
-            f'<span class="fm-meta">{size_kb:.1f} KB · {n_lines} lines</span>'
-            f'</div>',
+            f'<div style="display:flex;align-items:center;gap:.8rem;'
+            f'padding:.6rem .9rem;background:rgba(77,159,255,.07);'
+            f'border:1px solid rgba(77,159,255,.2);border-radius:10px;margin:.4rem 0">'
+            f'<span style="font-size:1.1rem">📦</span>'
+            f'<span style="font-size:.82rem;font-weight:700;color:var(--blue,#4D9FFF)">'
+            f'{len(parsed)} file{"s" if len(parsed)!=1 else ""} selected'
+            f'</span>'
+            f'<span style="font-size:.75rem;color:var(--text-muted,#64748B);margin-left:auto">'
+            f'Total: {total_kb:.1f} KB'
+            f'</span></div>',
             unsafe_allow_html=True,
         )
-        section_label("Preview")
-        code_preview(content, lang, f"upw_{widget_key_suffix}_{up.name}")
 
+        # File list with individual preview toggle
+        for fname, ext, file_content, size_kb, lang, n_lines in parsed:
+            pk = f"upw_prev_{widget_key_suffix}_{fname}"
+            if pk not in st.session_state:
+                st.session_state[pk] = False
+
+            r1, r2 = st.columns([5, 1.5])
+            with r1:
+                st.markdown(
+                    f'<div class="fm-row">'
+                    f'<span class="fm-icon">{_ext_icon(ext)}</span>'
+                    f'<div style="flex:1;min-width:0">'
+                    f'<div class="fm-name">{fname}</div>'
+                    f'<div class="fm-meta">{size_kb:.1f} KB · {n_lines} lines</div>'
+                    f'</div>'
+                    f'<span class="badge badge-cyan">{ext}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with r2:
+                prev_lbl = "🔼 Close" if st.session_state[pk] else "👁 Preview"
+                if st.button(prev_lbl, key=f"upw_tog_{widget_key_suffix}_{fname}",
+                             use_container_width=True):
+                    st.session_state[pk] = not st.session_state[pk]
+                    st.rerun()
+
+            if st.session_state[pk]:
+                code_preview(file_content, lang, f"upw_{widget_key_suffix}_{fname}")
+
+        # Action buttons
         st.markdown("<br>", unsafe_allow_html=True)
-        sb1, sb2, _ = st.columns([2, 2, 5])
+        sb1, sb2, _ = st.columns([3, 2, 4])
         with sb1:
-            if st.button("💾 Save File", key=f"fm_save_{widget_key_suffix}", use_container_width=True):
-                db.save_file(up.name, ext, content, round(size_kb, 2), target_folder_id)
-                st.success(f"✅ **{up.name}** saved!")
-                return True   # signal: file saved
+            btn_lbl = f"💾 Save {len(parsed)} File{'s' if len(parsed)!=1 else ''} ({total_kb:.1f} KB)"
+            if st.button(btn_lbl, key=f"fm_save_{widget_key_suffix}", use_container_width=True):
+                saved = 0
+                for fname, ext, file_content, size_kb, lang, n_lines in parsed:
+                    if db.save_file(fname, ext, file_content, round(size_kb, 2), target_folder_id):
+                        saved += 1
+                if saved:
+                    st.success(f"✅ {saved} file{'s' if saved!=1 else ''} saved successfully!")
+                    return True
+                else:
+                    st.error("❌ Failed to save files.")
         with sb2:
-            if st.button("✖ Cancel", key=f"fm_cancelup_{widget_key_suffix}", use_container_width=True):
+            if st.button("✖ Cancel", key=f"fm_cancelup_{widget_key_suffix}",
+                         use_container_width=True):
                 return "cancel"
+
     return False
 
 
